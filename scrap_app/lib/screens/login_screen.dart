@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
-import '../main.dart'; // để điều hướng sang ScrapApp sau login
+import '../main.dart'; // để điều hướng sang RootApp sau login
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,26 +25,29 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // gọi API login
+      // gọi API đăng nhập -> API sẽ lưu jwt, role, ... vào SharedPreferences luôn
       final res = await api.login(
         _user.text.trim(),
         _pass.text.trim(),
       );
-      // res.role, res.customerId, res.collectorId
-      // api.login() cũng đã lưu jwt/role/... xuống SharedPreferences
+
+      // debug cho chắc
+      debugPrint('LOGIN OK role=${res.role} '
+          'customerId=${res.customerId} collectorId=${res.collectorId}');
 
       if (!mounted) return;
-      Navigator.pushReplacement(
+
+      // Sau khi login thành công:
+      // Thay vì tạo ScrapApp thủ công (cần onLogout),
+      // mình reset navigation stack về RootApp.
+      Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(
-          builder: (_) => ScrapApp(
-            role: res.role,
-            customerId: res.customerId,
-            collectorId: res.collectorId,
-          ),
-        ),
+        MaterialPageRoute(builder: (_) => const RootApp()),
+        (route) => false,
       );
     } catch (e) {
+      debugPrint('LOGIN ERROR = $e');
+
       if (!mounted) return;
       setState(() {
         _err = 'Đăng nhập thất bại';
@@ -88,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           const SizedBox(height: 12),
           FilledButton.icon(
-            onPressed: _doLogin,
+            onPressed: _loading ? null : _doLogin,
             icon: const Icon(Icons.login),
             label: const Text("Đăng nhập"),
           ),

@@ -38,17 +38,21 @@ void main() {
   testWidgets('ScrapApp renders home tiles for admin', (WidgetTester tester) async {
     // Pump app như một admin
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: ScrapApp(
           role: 'admin',
           customerId: null,
           collectorId: null,
+          onLogout: () async {}, // <-- phải trả Future<void>
         ),
       ),
     );
 
-    // Kiểm tra xem có các tile dành cho admin xuất hiện không
-    expect(find.textContaining('Quản lý'), findsOneWidget);
+    // Kiểm tra có tile dành cho admin
+    expect(find.textContaining('Quản lý KH'), findsOneWidget);
     expect(find.textContaining('Bản đồ điều phối'), findsOneWidget);
+
+    // Kiểm tra AppBar hiển thị role
+    expect(find.textContaining('admin'), findsOneWidget);
   });
 }

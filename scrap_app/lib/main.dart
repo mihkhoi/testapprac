@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'env.dart';
 import 'ui/app_theme.dart';
 import 'screens/login_screen.dart';
 import 'screens/customer_booking_screen.dart';
@@ -9,15 +10,23 @@ import 'screens/collector_screen.dart';
 import 'screens/management_screen.dart';
 import 'screens/map_screen.dart';
 import 'screens/listings_screen.dart';
+import 'session.dart';
 
-void main() {
+// MAIN async
+Future<void> main() async {
+
+  const String.fromEnvironment('FLUTTER_COMPOSITION_RENDERING', defaultValue: 'legacy');
+  
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // rất quan trọng: dò backend trước khi chạy app
+  await Env.init();
+
   runApp(const RootApp());
 }
 
-// RootApp lo phần check login và pass role xuống ScrapApp
 class RootApp extends StatefulWidget {
   const RootApp({super.key});
-
   @override
   State<RootApp> createState() => _RootAppState();
 }
@@ -36,7 +45,7 @@ class _RootAppState extends State<RootApp> {
 
   Future<void> _initSession() async {
     final sp = await SharedPreferences.getInstance();
-    final token = sp.getString('jwt'); // JWT
+    final token = sp.getString('jwt');
     final role = sp.getString('role');
     final customerId = sp.getInt('customerId');
     final collectorId = sp.getInt('collectorId');
@@ -47,9 +56,20 @@ class _RootAppState extends State<RootApp> {
         _customerId = customerId;
         _collectorId = collectorId;
       } else {
-        _role = null; // chưa login
+        _role = null;
+        _customerId = null;
+        _collectorId = null;
       }
       _loaded = true;
+    });
+  }
+
+  Future<void> _handleLoggedOut() async {
+    await Session.logout();
+    setState(() {
+      _role = null;
+      _customerId = null;
+      _collectorId = null;
     });
   }
 
@@ -69,22 +89,24 @@ class _RootAppState extends State<RootApp> {
                   role: _role!,
                   customerId: _customerId,
                   collectorId: _collectorId,
+                  onLogout: _handleLoggedOut,
                 )),
     );
   }
 }
 
-// Đây là màn Home chính sau khi đã đăng nhập
 class ScrapApp extends StatefulWidget {
-  final String role; // "admin" | "customer" | "collector"
+  final String role; // admin | customer | collector
   final int? customerId;
   final int? collectorId;
+  final Future<void> Function() onLogout;
 
   const ScrapApp({
     super.key,
     required this.role,
     this.customerId,
     this.collectorId,
+    required this.onLogout,
   });
 
   @override
@@ -92,12 +114,16 @@ class ScrapApp extends StatefulWidget {
 }
 
 class _ScrapAppState extends State<ScrapApp> {
+  Future<void> _logout() async {
+    await Session.logout();
+    await widget.onLogout();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // dựng danh sách các "mục chức năng" hiển thị trên trang chủ
     final tiles = <_HomeTile>[];
 
-    // Customer: đặt lịch, xem lịch cá nhân, tin đăng thu mua (listings)
+    // customer / admin
     if (widget.role == 'customer' || widget.role == 'admin') {
       tiles.addAll([
         _HomeTile(
@@ -142,7 +168,7 @@ class _ScrapAppState extends State<ScrapApp> {
       ]);
     }
 
-    // Collector: xem việc, cập nhật trạng thái pickup
+    // collector / admin
     if (widget.role == 'collector' || widget.role == 'admin') {
       tiles.add(
         _HomeTile(
@@ -160,7 +186,7 @@ class _ScrapAppState extends State<ScrapApp> {
       );
     }
 
-    // Admin: quản lý KH/doanh nghiệp/collector, bản đồ điều phối
+    // admin only
     if (widget.role == 'admin') {
       tiles.addAll([
         _HomeTile(
@@ -193,6 +219,35 @@ class _ScrapAppState extends State<ScrapApp> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Xin chào (${widget.role})'),
+        actions: [
+          IconButton(
+            tooltip: 'Đăng xuất',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Đăng xuất'),
+                  content: const Text('Bạn có chắc muốn đăng xuất không?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Huỷ'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Đăng xuất'),
+                    ),
+                  ],
+                ),
+              );
+
+              if (ok == true) {
+                await _logout();
+              }
+            },
+          ),
+        ],
       ),
       body: GridView.count(
         padding: const EdgeInsets.all(16),
@@ -230,5 +285,10 @@ class _HomeTile {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  _HomeTile({required this.icon, required this.label, required this.onTap});
+
+  _HomeTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 }

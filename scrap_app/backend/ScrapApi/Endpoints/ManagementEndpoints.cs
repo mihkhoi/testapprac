@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using ScrapApi.Data;
 using ScrapApi.Models;
@@ -8,8 +9,18 @@ namespace ScrapApi.Endpoints
     {
         public static void MapManagementEndpoints(this IEndpointRouteBuilder app)
         {
-            // GET all companies + collectors
-            app.MapGet("/api/companies", async (AppDb db) =>
+            // Tạo 1 nhóm route dành riêng cho admin
+            // Tất cả endpoint bên trong sẽ có prefix /api/admin
+            // và yêu cầu role = admin
+            var adminGroup = app.MapGroup("/api/admin")
+                .RequireAuthorization(policy => policy.RequireRole("admin"));
+
+            // ============================
+            // 1) COMPANY MANAGEMENT
+            // ============================
+
+            // GET /api/admin/companies
+            adminGroup.MapGet("/companies", async (AppDb db) =>
             {
                 var data = await db.CollectorCompanies
                     .Include(c => c.Collectors)
@@ -30,37 +41,38 @@ namespace ScrapApi.Endpoints
                 return Results.Ok(data);
             });
 
-            // POST create company
-            app.MapPost("/api/companies", async (AppDb db, CollectorCompany co) =>
+            // POST /api/admin/companies
+            adminGroup.MapPost("/companies", async (AppDb db, CollectorCompany co) =>
             {
                 db.CollectorCompanies.Add(co);
                 await db.SaveChangesAsync();
-                return Results.Created($"/api/companies/{co.Id}", co);
+                return Results.Created($"/api/admin/companies/{co.Id}", co);
             });
 
-            // PUT update company
-            app.MapPut("/api/companies/{id:int}", async (AppDb db, int id, CollectorCompany input) =>
+            // PUT /api/admin/companies/{id}
+            adminGroup.MapPut("/companies/{id:int}", async (AppDb db, int id, CollectorCompany input) =>
             {
                 var co = await db.CollectorCompanies.FindAsync(id);
                 if (co == null) return Results.NotFound();
 
-                co.Name = input.Name;
+                co.Name         = input.Name;
                 co.ContactPhone = input.ContactPhone;
-                co.Address = input.Address;
+                co.Address      = input.Address;
 
                 await db.SaveChangesAsync();
                 return Results.Ok(co);
             });
 
-            // DELETE company
-            app.MapDelete("/api/companies/{id:int}", async (AppDb db, int id) =>
+            // DELETE /api/admin/companies/{id}
+            adminGroup.MapDelete("/companies/{id:int}", async (AppDb db, int id) =>
             {
                 var co = await db.CollectorCompanies
                     .Include(c => c.Collectors)
                     .FirstOrDefaultAsync(c => c.Id == id);
+
                 if (co == null) return Results.NotFound();
 
-                // xoá luôn collectors con hoặc check ràng buộc tuỳ bạn
+                // tuỳ chính sách: xoá luôn collectors con
                 db.Collectors.RemoveRange(co.Collectors);
                 db.CollectorCompanies.Remove(co);
 
@@ -68,30 +80,34 @@ namespace ScrapApi.Endpoints
                 return Results.NoContent();
             });
 
-            // POST create collector
-            app.MapPost("/api/collectors", async (AppDb db, Collector c) =>
+            // ============================
+            // 2) COLLECTOR MANAGEMENT
+            // ============================
+
+            // POST /api/admin/collectors
+            adminGroup.MapPost("/collectors", async (AppDb db, Collector c) =>
             {
                 db.Collectors.Add(c);
                 await db.SaveChangesAsync();
-                return Results.Created($"/api/collectors/{c.Id}", c);
+                return Results.Created($"/api/admin/collectors/{c.Id}", c);
             });
 
-            // PUT update collector
-            app.MapPut("/api/collectors/{id:int}", async (AppDb db, int id, Collector input) =>
+            // PUT /api/admin/collectors/{id}
+            adminGroup.MapPut("/collectors/{id:int}", async (AppDb db, int id, Collector input) =>
             {
                 var c = await db.Collectors.FindAsync(id);
                 if (c == null) return Results.NotFound();
 
-                c.FullName = input.FullName;
-                c.Phone = input.Phone;
+                c.FullName  = input.FullName;
+                c.Phone     = input.Phone;
                 c.CompanyId = input.CompanyId;
 
                 await db.SaveChangesAsync();
                 return Results.Ok(c);
             });
 
-            // DELETE collector
-            app.MapDelete("/api/collectors/{id:int}", async (AppDb db, int id) =>
+            // DELETE /api/admin/collectors/{id}
+            adminGroup.MapDelete("/collectors/{id:int}", async (AppDb db, int id) =>
             {
                 var c = await db.Collectors.FindAsync(id);
                 if (c == null) return Results.NotFound();

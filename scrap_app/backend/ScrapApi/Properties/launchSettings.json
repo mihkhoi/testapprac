@@ -5,18 +5,31 @@
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
-      "applicationUrl": "http://localhost:5245",
+
+   
+      "applicationUrl": "http://0.0.0.0:5245",
+
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+
+     
+        "Jwt__Key": "dev_temp_secret_123456_dev_temp_secret_123456",
+        "Jwt__Issuer": "ScrapApi"
       }
     },
+
     "https": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
-      "applicationUrl": "https://localhost:7222;http://localhost:5245",
+
+     
+      "applicationUrl": "http://0.0.0.0:5245",
+
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Jwt__Key": "dev_temp_secret_123456_dev_temp_secret_123456",
+        "Jwt__Issuer": "ScrapApi"
       }
     }
   }

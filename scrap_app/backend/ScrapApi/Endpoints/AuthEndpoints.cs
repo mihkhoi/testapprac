@@ -9,17 +9,16 @@ namespace ScrapApi.Endpoints
     {
         public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
         {
-            // Đăng ký tài khoản mới
-            // body: { "username":"...", "password":"...", "role":"customer|collector|admin", "customerId":1, "collectorId":null }
+            // /api/auth/register
             app.MapPost("/api/auth/register", async (AppDb db, RegisterDto dto) =>
             {
-                // check trùng username
                 if (await db.Users.AnyAsync(u => u.Username == dto.Username))
                     return Results.BadRequest("Username tồn tại");
 
                 var user = new User
                 {
                     Username     = dto.Username,
+                    // lưu dạng hash chuẩn cho tài khoản mới
                     PasswordHash = AuthUtils.HashPassword(dto.Password),
                     Role         = dto.Role ?? "customer",
                     CustomerId   = dto.CustomerId,
@@ -35,21 +34,34 @@ namespace ScrapApi.Endpoints
                 );
             });
 
-            // Đăng nhập -> trả token JWT
-            // body: { "username":"...", "password":"..." }
+            // /api/auth/login
             app.MapPost("/api/auth/login", async (AppDb db, LoginDto dto, IConfiguration config) =>
             {
+                // 1) thử kiểu HASH (cho user tạo mới)
                 var hash = AuthUtils.HashPassword(dto.Password);
 
-                var user = await db.Users
-                    .FirstOrDefaultAsync(u =>
+                var user = await db.Users.FirstOrDefaultAsync(u =>
+                    u.Username == dto.Username &&
+                    u.PasswordHash == hash
+                );
+
+                // 2) nếu không có -> thử password plain (cho user seed ban đầu)
+                if (user is null)
+                {
+                    user = await db.Users.FirstOrDefaultAsync(u =>
                         u.Username == dto.Username &&
-                        u.PasswordHash == hash);
+                        u.PasswordHash == dto.Password
+                    );
+                }
 
                 if (user is null)
+                {
                     return Results.Unauthorized();
+                }
 
-                var jwtKey    = config["Jwt:Key"]    ?? "dev_temp_secret_123456";
+                // Lấy key & issuer từ config hoặc fallback siêu dài
+                var jwtKey = config["Jwt:Key"]
+                    ?? "THIS_IS_A_DEMO_SUPER_LONG_SECRET_KEY_1234567890_ABCD!!";
                 var jwtIssuer = config["Jwt:Issuer"] ?? "ScrapApi";
 
                 var token = AuthUtils.CreateJwtToken(

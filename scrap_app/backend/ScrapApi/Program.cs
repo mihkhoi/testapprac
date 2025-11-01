@@ -107,6 +107,24 @@ using (var scope = app.Services.CreateScope())
     await SeedData.InitAsync(db);
 }
 
+// ================== health check đơn giản ==================
+app.MapGet("/health", () => Results.Ok(new { status = "OK" }));
+
+app.MapGet("/whoami", (HttpContext ctx) =>
+{
+    // localIp: cố lấy địa chỉ IP của server trong mạng LAN
+    // gợi ý: lấy từ Connection
+    var localIp = ctx.Connection.LocalIpAddress?.ToString() ?? "unknown";
+    var localPort = ctx.Connection.LocalPort;
+
+    return Results.Ok(new {
+        ip = localIp,
+        port = localPort,
+        status = "OK"
+    });
+});
+
+
 // 7. map các nhóm endpoint vào app
 app.MapAuthEndpoints();        // /api/auth/register, /api/auth/login
 app.MapCompaniesEndpoints();   // /api/companies ... (có [Authorize(Roles="admin")])

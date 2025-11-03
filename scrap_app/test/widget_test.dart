@@ -1,58 +1,92 @@
-// // This is a basic Flutter widget test.
-// //
-// // To perform an interaction with a widget in your test, use the WidgetTester
-// // utility in the flutter_test package. For example, you can send tap and scroll
-// // gestures. You can also use WidgetTester to find child widgets in the widget
-// // tree, read text, and verify that the values of widget properties are correct.
-
-// import 'package:flutter/material.dart';
-// import 'package:flutter_test/flutter_test.dart';
-
-// import 'package:scrap_app/main.dart';
-
-// void main() {
-//   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-//     // Build our app and trigger a frame.
-//     await tester.pumpWidget(const ScrapApp());
-
-//     // Verify that our counter starts at 0.
-//     expect(find.text('0'), findsOneWidget);
-//     expect(find.text('1'), findsNothing);
-
-//     // Tap the '+' icon and trigger a frame.
-//     await tester.tap(find.byIcon(Icons.add));
-//     await tester.pump();
-
-//     // Verify that our counter has incremented.
-//     expect(find.text('0'), findsNothing);
-//     expect(find.text('1'), findsOneWidget);
-//   });
-// }
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+// import main.dart để lấy ScrapShell
 import 'package:scrap_app/main.dart';
 
 void main() {
-  testWidgets('ScrapApp renders home tiles for admin', (WidgetTester tester) async {
-    // Pump app như một admin
+  testWidgets('Admin UI shows đúng các tab và lời chào', (WidgetTester tester) async {
+    // -- pump widget giả lập 1 admin đã đăng nhập --
     await tester.pumpWidget(
-      MaterialApp(
-        home: ScrapApp(
+      const MaterialApp(
+        home: ScrapShell(
           role: 'admin',
           customerId: null,
           collectorId: null,
-          onLogout: () async {}, // <-- phải trả Future<void>
+          onLogout: _fakeLogout,
         ),
       ),
     );
 
-    // Kiểm tra có tile dành cho admin
-    expect(find.textContaining('Quản lý KH'), findsOneWidget);
-    expect(find.textContaining('Bản đồ điều phối'), findsOneWidget);
+    // Cho Flutter build xong khung
+    await tester.pumpAndSettle();
 
-    // Kiểm tra AppBar hiển thị role
-    expect(find.textContaining('admin'), findsOneWidget);
+    // 1. AppBar có "Xin chào (admin)"
+    expect(find.textContaining('Xin chào (admin)'), findsOneWidget);
+
+    // 2. Trang Home có title chào mừng
+    expect(
+      find.text('Chào mừng đến với ứng dụng thu gom phế liệu'),
+      findsOneWidget,
+    );
+
+    // 3. BottomNavigationBar dành cho admin có các label:
+    expect(find.text('Trang chủ'), findsOneWidget);
+    expect(find.text('Điều phối'), findsOneWidget);
+    expect(find.text('Quản lý'), findsOneWidget);
+    expect(find.text('Listings'), findsOneWidget);
   });
+
+  testWidgets('Customer UI có tab Đặt lịch và Lịch của tôi', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: ScrapShell(
+          role: 'customer',
+          customerId: 123, // giả có customerId để hiện "Lịch của tôi"
+          collectorId: null,
+          onLogout: _fakeLogout,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // AppBar chào customer
+    expect(find.textContaining('Xin chào (customer)'), findsOneWidget);
+
+    // Bottom nav của customer
+    expect(find.text('Trang chủ'), findsOneWidget);
+    expect(find.text('Đặt lịch'), findsOneWidget);
+    expect(find.text('Lịch của tôi'), findsOneWidget);
+    expect(find.text('Listings'), findsOneWidget);
+  });
+
+  testWidgets('Collector UI có tab Công việc và Bản đồ', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: ScrapShell(
+          role: 'collector',
+          customerId: null,
+          collectorId: 99,
+          onLogout: _fakeLogout,
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    // AppBar chào collector
+    expect(find.textContaining('Xin chào (collector)'), findsOneWidget);
+
+    // Bottom nav của collector
+    expect(find.text('Trang chủ'), findsOneWidget);
+    expect(find.text('Công việc'), findsOneWidget);
+    expect(find.text('Bản đồ'), findsOneWidget);
+  });
+}
+
+// Hàm logout fake để pass vào ScrapShell.
+// Phải là Future<void> Function()
+Future<void> _fakeLogout() async {
+  // không làm gì hết, chỉ để test compile
 }

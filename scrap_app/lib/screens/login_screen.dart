@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../main.dart'; // để điều hướng sang RootApp sau login
+import 'register_screen.dart'; // <-- thêm import màn đăng ký
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -38,8 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       // Sau khi login thành công:
-      // Thay vì tạo ScrapApp thủ công (cần onLogout),
-      // mình reset navigation stack về RootApp.
+      // reset navigation stack về RootApp để load role và build ScrapShell
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const RootApp()),
@@ -58,6 +58,25 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _loading = false;
     });
+  }
+
+  Future<void> _goRegister() async {
+    // mở màn hình đăng ký và chờ kết quả
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const RegisterScreen(),
+      ),
+    );
+
+    // nếu RegisterScreen pop(context, true) => đăng ký ok
+    if (created == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đăng ký thành công, hãy đăng nhập'),
+        ),
+      );
+    }
   }
 
   @override
@@ -84,16 +103,29 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
           const SizedBox(height: 12),
+
           if (_err != null)
             Text(
               _err!,
               style: const TextStyle(color: Colors.red),
             ),
+
           const SizedBox(height: 12),
+
+          // nút Đăng nhập
           FilledButton.icon(
             onPressed: _loading ? null : _doLogin,
             icon: const Icon(Icons.login),
             label: const Text("Đăng nhập"),
+          ),
+
+          const SizedBox(height: 16),
+
+          // nút Đi tới Đăng ký
+          TextButton.icon(
+            onPressed: _loading ? null : _goRegister,
+            icon: const Icon(Icons.app_registration),
+            label: const Text("Chưa có tài khoản? Đăng ký"),
           ),
         ],
       ),
@@ -108,6 +140,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           if (_loading)
             Container(
+              // nếu SDK của bạn quá cũ chưa có withValues thì đổi lại .withOpacity(0.05)
               color: Colors.black.withValues(alpha: 0.05),
               child: const Center(child: CircularProgressIndicator()),
             ),

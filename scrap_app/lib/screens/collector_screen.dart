@@ -1,126 +1,130 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../api.dart';
 import '../models.dart';
 
 class CollectorScreen extends StatefulWidget {
   const CollectorScreen({super.key});
+
   @override
   State<CollectorScreen> createState() => _CollectorScreenState();
 }
 
-class _CollectorScreenState extends State<CollectorScreen>
-    with SingleTickerProviderStateMixin {
+class _CollectorScreenState extends State<CollectorScreen> {
   final api = Api();
 
-  List<Collector> _collectors = [];
-  Collector? _selected; // collector đang chọn
-  int? _statusFilter; // lọc theo trạng thái
-  List<PickupRequest> _items = [];
-
   bool _loading = false;
+  String? _error;
+
+  int? _collectorId;
+  int? _statusFilter; // null = tất cả
+  List<PickupRequest> _items = [];
 
   @override
   void initState() {
     super.initState();
-    _init();
+    _initAndLoad();
   }
 
-  Future<void> _init() async {
-    setState(() => _loading = true);
+  Future<void> _initAndLoad() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
-    _collectors = await api.getCollectors();
-    if (_collectors.isNotEmpty) {
-      _selected = _collectors.first;
+    try {
+      final sp = await SharedPreferences.getInstance();
+      final cid = sp.getInt('collectorId');
+
+      if (cid == null) {
+        // Không tìm thấy collectorId trong SharedPreferences
+        if (!mounted) return;
+        setState(() {
+          _collectorId = null;
+          _items = [];
+          _loading = false;
+          _error =
+              'Không tìm thấy collectorId. Hãy đăng nhập bằng tài khoản nhân viên thu gom.';
+        });
+        return;
+      }
+
+      _collectorId = cid;
+
+      final list = await api.getMyPickups(
+        cid,
+        status: _statusFilter,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _items = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Lỗi tải công việc: $e';
+        _loading = false;
+      });
     }
-
-    await _loadPickups();
-
-    if (!mounted) return;
-    setState(() => _loading = false);
   }
 
-  /// tải danh sách pickup (mặc định: tất cả, không filter theo collectorId)
-  Future<void> _loadPickups() async {
-    setState(() => _loading = true);
+  Future<void> _reloadPickups() async {
+    if (_collectorId == null) return;
 
-    _items = await api.getPickups(
-      status: _statusFilter,
-      // nếu muốn chỉ lấy job của collector đang chọn thì đổi thành _selected?.id
-      collectorId: null,
-    );
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
-    if (!mounted) return;
-    setState(() => _loading = false);
+    try {
+      final list = await api.getMyPickups(
+        _collectorId!,
+        status: _statusFilter,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _items = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Lỗi tải công việc: $e';
+        _loading = false;
+      });
+    }
   }
 
-  /// collector nhận job thủ công
   Future<void> _accept(int pickupId) async {
-    if (_selected == null) return;
+    if (_collectorId == null) return;
+
     setState(() => _loading = true);
 
-    await api.acceptPickup(pickupId, _selected!.id);
-    await _loadPickups();
-
-    if (!mounted) return;
-    setState(() => _loading = false);
+    try {
+      await api.acceptPickup(pickupId, _collectorId!);
+      await _reloadPickups();
+      _toast('Đã nhận việc');
+    } catch (e) {
+      _toast('Nhận việc lỗi: $e');
+      await _reloadPickups();
+    }
   }
 
-  /// đổi trạng thái job
   Future<void> _setStatus(int pickupId, int status) async {
     setState(() => _loading = true);
 
-    await api.setStatus(pickupId, status);
-    await _loadPickups();
-
-    if (!mounted) return;
-    setState(() => _loading = false);
-  }
-
-  /// tự động gán job Pending cho người gần nhất
-  Future<void> _autoDispatch(PickupRequest p) async {
-    // lat/lng trong model là non-nullable double (theo code backend),
-    // nên mình lấy thẳng:
-    final double jobLat = p.lat;
-    final double jobLng = p.lng;
-
-    setState(() => _loading = true);
     try {
-      await api.dispatchNearest(
-        p.id,
-        jobLat: jobLat,
-        jobLng: jobLng,
-        radiusKm: 10,
-        // nếu muốn giới hạn theo doanh nghiệp của collector đang chọn:
-        // companyId: _selected?.companyId,
-        companyId: null,
-      );
-      await _loadPickups();
-      _toast('Đã auto-dispatch');
+      await api.setStatus(pickupId, status);
+      await _reloadPickups();
+      _toast('Đã cập nhật trạng thái');
     } catch (e) {
-      _toast('Auto-dispatch lỗi: $e');
+      _toast('Cập nhật lỗi: $e');
+      await _reloadPickups();
     }
-
-    if (!mounted) return;
-    setState(() => _loading = false);
-  }
-
-  String _statusName(int s) => const [
-        'Pending',
-        'Accepted',
-        'InProgress',
-        'Completed',
-        'Cancelled'
-      ][s];
-
-  Color _statusColor(int s) {
-    // nền nhạt cho Chip
-    return switch (s) {
-      0 => Colors.orangeAccent.withValues(alpha: 0.15),
-      1 => Colors.blueAccent.withValues(alpha: 0.15),
-      2 => Colors.amber.withValues(alpha: 0.15),
-      3 => Colors.greenAccent.withValues(alpha: 0.15),
-      _ => Colors.grey.withValues(alpha: 0.2),
-    };
   }
 
   void _toast(String m) {
@@ -129,27 +133,186 @@ class _CollectorScreenState extends State<CollectorScreen>
         ?.showSnackBar(SnackBar(content: Text(m)));
   }
 
+  String _statusName(int s) {
+    switch (s) {
+      case 0:
+        return 'Pending';
+      case 1:
+        return 'Accepted';
+      case 2:
+        return 'InProgress';
+      case 3:
+        return 'Completed';
+      case 4:
+        return 'Cancelled';
+      default:
+        return '?';
+    }
+  }
+
+  Color _statusColorBg(int s) {
+    switch (s) {
+      case 0:
+        return Colors.orangeAccent.withValues(alpha: 0.15);
+      case 1:
+        return Colors.blueAccent.withValues(alpha: 0.15);
+      case 2:
+        return Colors.amber.withValues(alpha: 0.15);
+      case 3:
+        return Colors.greenAccent.withValues(alpha: 0.15);
+      default:
+        return Colors.grey.withValues(alpha: 0.15);
+    }
+  }
+
+  Color _statusColorText(int s) {
+    switch (s) {
+      case 0:
+        return Colors.orangeAccent;
+      case 1:
+        return Colors.blueAccent;
+      case 2:
+        return Colors.amber;
+      case 3:
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Widget _buildJobCard(PickupRequest p) {
+    final customerName = p.customer?.fullName ?? '';
+    final customerPhone = p.customer?.phone ?? '';
+    final customerAddr = p.customer?.address ?? '';
+
+    // format nhẹ cho giờ hẹn
+    final pickupTimeStr =
+        p.pickupTime.toLocal().toString().substring(0, 16); // yyyy-MM-dd HH:mm
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      elevation: 1.5,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: Colors.black.withValues(alpha: 0.05),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // hàng đầu: tiêu đề + chip trạng thái
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Yêu cầu #${p.id} - ${p.scrapType} (${p.quantityKg} kg)',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: _statusColorBg(p.status),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  child: Text(
+                    _statusName(p.status),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: _statusColorText(p.status),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // thông tin khách
+            Text(
+              'Khách: $customerName ($customerPhone)',
+              style: const TextStyle(fontSize: 14),
+            ),
+            if (customerAddr.isNotEmpty)
+              Text(
+                'Địa chỉ: $customerAddr',
+                style: const TextStyle(fontSize: 14),
+              ),
+
+            const SizedBox(height: 4),
+
+            // thời gian hẹn
+            Text(
+              'Hẹn: $pickupTimeStr',
+              style: const TextStyle(fontSize: 14),
+            ),
+
+            // note (nếu có)
+            if (p.note != null && p.note!.trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Ghi chú: ${p.note}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 12),
+
+            // hàng nút hành động
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                // Pending -> Nhận
+                if (p.status == 0)
+                  OutlinedButton(
+                    onPressed: () => _accept(p.id),
+                    child: const Text('Nhận'),
+                  ),
+
+                // Accepted -> Bắt đầu
+                if (p.status == 1)
+                  OutlinedButton(
+                    onPressed: () => _setStatus(p.id, 2),
+                    child: const Text('Bắt đầu'),
+                  ),
+
+                // InProgress -> Hoàn tất
+                if (p.status == 2)
+                  FilledButton(
+                    onPressed: () => _setStatus(p.id, 3),
+                    child: const Text('Hoàn tất'),
+                  ),
+
+                // Pending/Accepted/InProgress -> Huỷ
+                if (p.status <= 2)
+                  TextButton(
+                    onPressed: () => _setStatus(p.id, 4),
+                    child: const Text('Huỷ'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final dropdownCollector = DropdownButton<Collector>(
-      value: _selected,
-      items: _collectors
-          .map(
-            (c) => DropdownMenuItem(
-              value: c,
-              child: Text('#${c.id} - ${c.fullName}'),
-            ),
-          )
-          .toList(),
-      onChanged: (v) async {
-        setState(() => _selected = v);
-        // nếu muốn chế độ "chỉ job của collector này" thì bạn có thể
-        // viết thêm _loadMyPickups() và gọi ở đây thay cho _loadPickups()
-        await _loadPickups();
-      },
-    );
-
-    final dropdownStatus = DropdownButton<int?>(
+    final filterDropdown = DropdownButton<int?>(
       value: _statusFilter,
       items: const [
         DropdownMenuItem(value: null, child: Text('(Tất cả)')),
@@ -160,111 +323,84 @@ class _CollectorScreenState extends State<CollectorScreen>
         DropdownMenuItem(value: 4, child: Text('Cancelled')),
       ],
       onChanged: (v) async {
-        _statusFilter = v;
-        await _loadPickups();
+        setState(() => _statusFilter = v);
+        await _reloadPickups();
       },
     );
 
+    final headerInfo = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Text(
+        'collectorId: ${_collectorId ?? "-"} | jobs: ${_items.length}',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey.shade700,
+        ),
+      ),
+    );
+
+    // ==== BODYCONTENT ====
+    Widget bodyContent;
+    if (_error != null) {
+      bodyContent = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            _error!,
+            style: const TextStyle(color: Colors.red),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    } else if (_items.isEmpty && !_loading) {
+      bodyContent = const Center(
+        child: Text('Hiện chưa có công việc nào.'),
+      );
+    } else {
+      bodyContent = ListView.builder(
+        itemCount: _items.length,
+        itemBuilder: (ctx, i) {
+          final p = _items[i];
+          return _buildJobCard(p);
+        },
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Lịch thu gom')),
+      appBar: AppBar(
+        title: const Text('Công việc của tôi'),
+        actions: [
+          IconButton(
+            onPressed: _reloadPickups,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: 12),
+              headerInfo,
+              const SizedBox(height: 8),
+
               Padding(
-                padding: const EdgeInsets.all(12),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    dropdownCollector,
-                    dropdownStatus,
-                    FilledButton.icon(
-                      onPressed: _loadPickups,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Tải danh sách'),
-                    ),
+                    const Text('Trạng thái:'),
+                    const SizedBox(width: 12),
+                    filterDropdown,
                   ],
                 ),
               ),
+
+              const SizedBox(height: 8),
               const Divider(height: 1),
 
-              Expanded(
-                child: ListView.separated(
-                  itemCount: _items.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (ctx, i) {
-                    final p = _items[i];
-
-                    // Vì model Flutter hiện chưa có acceptedByCollectorId,
-                    // mình sẽ suy luận dựa theo status:
-                    final collectorInfo = switch (p.status) {
-                      0 => '(chưa nhận)', // Pending
-                      _ => 'Đang xử lý',   // Accepted / InProgress / ...
-                    };
-
-                    return ListTile(
-                      isThreeLine: true,
-                      title: Text(
-                        'Yêu cầu #${p.id} • ${p.scrapType} • ${p.quantityKg} kg',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: Text(
-                        'Khách: ${p.customer?.fullName ?? ''} (${p.customer?.phone ?? ''})\n'
-                        'Thời gian: ${p.pickupTime}\n'
-                        'Phụ trách: $collectorInfo',
-                      ),
-                      trailing: Wrap(
-                        spacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          // Chip trạng thái
-                          Chip(
-                            label: Text(_statusName(p.status)),
-                            backgroundColor: _statusColor(p.status),
-                            side: BorderSide.none,
-                          ),
-
-                          // Pending -> auto-dispatch hoặc nhận tay
-                          if (p.status == 0)
-                            TextButton(
-                              onPressed: () => _autoDispatch(p),
-                              child: const Text('Auto-dispatch'),
-                            ),
-
-                          if (p.status == 0)
-                            OutlinedButton(
-                              onPressed: () => _accept(p.id),
-                              child: const Text('Nhận'),
-                            ),
-
-                          // Accepted -> Bắt đầu
-                          if (p.status == 1)
-                            OutlinedButton(
-                              onPressed: () => _setStatus(p.id, 2),
-                              child: const Text('Bắt đầu'),
-                            ),
-
-                          // InProgress -> Hoàn tất
-                          if (p.status == 2)
-                            FilledButton(
-                              onPressed: () => _setStatus(p.id, 3),
-                              child: const Text('Hoàn tất'),
-                            ),
-
-                          // Pending/Accepted/InProgress -> Huỷ
-                          if (p.status <= 2)
-                            TextButton(
-                              onPressed: () => _setStatus(p.id, 4),
-                              child: const Text('Huỷ'),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
+              Expanded(child: bodyContent),
             ],
           ),
 

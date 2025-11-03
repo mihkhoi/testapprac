@@ -63,85 +63,164 @@ namespace ScrapApi.Data
         }
     }
 
-    public static class SeedData
+
+public static class SeedData
+{
+    public static async Task InitAsync(AppDb db)
     {
-        public static async Task InitAsync(AppDb db)
+        // đảm bảo DB đã tạo
+        await db.Database.EnsureCreatedAsync();
+
+        // 1. Seed công ty + collector demo
+        if (!db.CollectorCompanies.Any())
         {
-            // Seed công ty + collector demo
-            if (!db.CollectorCompanies.Any())
+            var co = new CollectorCompany
             {
-                var co = new CollectorCompany
+                Name = "GreenCycle Co.",
+                ContactPhone = "0909-000-111",
+                Address = "HCM"
+            };
+
+            db.CollectorCompanies.Add(co);
+
+            db.Collectors.AddRange(
+                new Collector
                 {
-                    Name = "GreenCycle Co.",
-                    ContactPhone = "0909-000-111",
-                    Address = "HCM"
-                };
-
-                db.CollectorCompanies.Add(co);
-
-                db.Collectors.AddRange(
-                    new Collector
-                    {
-                        FullName = "Nguyễn Văn A",
-                        Phone = "0901-111-222",
-                        Company = co
-                    },
-                    new Collector
-                    {
-                        FullName = "Trần Thị B",
-                        Phone = "0902-333-444",
-                        Company = co
-                    }
-                );
-            }
-
-            // Seed khách demo
-            if (!db.Customers.Any())
-            {
-                db.Customers.AddRange(
-                    new Customer
-                    {
-                        FullName = "Khách 1",
-                        Phone = "0987-000-001",
-                        Address = "Q1"
-                    },
-                    new Customer
-                    {
-                        FullName = "Khách 2",
-                        Phone = "0987-000-002",
-                        Address = "Q3"
-                    }
-                );
-            }
-
-            // Seed listing demo
-            if (!db.ScrapListings.Any())
-            {
-                db.ScrapListings.Add(new ScrapListing
+                    FullName = "Nguyen Van A",
+                    Phone = "0901111222",
+                    Company = co
+                },
+                new Collector
                 {
-                    Title = "Nhựa PET 200kg",
-                    Description = "Bao sạch",
-                    PricePerKg = 7000,
-                    Lat = 10.78,
-                    Lng = 106.68,
-                    CreatedAt = DateTime.UtcNow
-                });
-            }
-
-            // Seed user admin demo
-            if (!db.Users.Any())
-            {
-                db.Users.Add(new User
-                {
-                    Username = "admin",
-                    PasswordHash = ScrapApi.Auth.AuthUtils.HashPassword("admin123"),
-                    Role = "admin",
-                    // CustomerId = null,
-                    // CollectorId = null
-                });
-            }
-
-            await db.SaveChangesAsync();
+                    FullName = "Tran Thi B",
+                    Phone = "0902333444",
+                    Company = co
+                }
+            );
         }
+
+        // lưu tạm để Collectors có Id
+        await db.SaveChangesAsync();
+
+        // lấy 1 collector ổn định (id nhỏ nhất)
+        var sampleCollector = await db.Collectors
+            .OrderBy(c => c.Id)
+            .FirstOrDefaultAsync();
+
+        // 2. Seed khách hàng demo
+        if (!db.Customers.Any())
+        {
+            db.Customers.AddRange(
+                new Customer
+                {
+                    FullName = "Khach 1",
+                    Phone = "0987000001",
+                    Address = "Q1"
+                },
+                new Customer
+                {
+                    FullName = "Khach 2",
+                    Phone = "0987000002",
+                    Address = "Q3"
+                }
+            );
+        }
+
+        // lưu tạm để Customers có Id
+        await db.SaveChangesAsync();
+
+        // lấy 1 customer ổn định (id nhỏ nhất)
+        var sampleCustomer = await db.Customers
+            .OrderBy(cu => cu.Id)
+            .FirstOrDefaultAsync();
+
+        // 3. Seed listing demo
+        if (!db.ScrapListings.Any())
+        {
+            db.ScrapListings.Add(new ScrapListing
+            {
+                Title = "Nhua PET 200kg",
+                Description = "Bao sach",
+                PricePerKg = 7000,
+                Lat = 10.78,
+                Lng = 106.68,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        // 4. Seed users (admin + customer + collector)
+        if (!db.Users.Any(u => u.Username == "admin1"))
+        {
+            db.Users.Add(new User
+            {
+                Username = "admin1",
+                PasswordHash = ScrapApi.Auth.AuthUtils.HashPassword("admin123"),
+                Role = "admin",
+                CustomerId = null,
+                CollectorId = null
+            });
+        }
+
+        if (!db.Users.Any(u => u.Username == "admin2"))
+        {
+            db.Users.Add(new User
+            {
+                Username = "admin2",
+                PasswordHash = ScrapApi.Auth.AuthUtils.HashPassword("123456"),
+                Role = "admin",
+                CustomerId = null,
+                CollectorId = null
+            });
+        }
+
+        if (sampleCustomer != null && !db.Users.Any(u => u.Username == "khach1"))
+        {
+            db.Users.Add(new User
+            {
+                Username = "khach1",
+                PasswordHash = ScrapApi.Auth.AuthUtils.HashPassword("123456"),
+                Role = "customer",
+                CustomerId = sampleCustomer.Id,
+                CollectorId = null
+            });
+        }
+
+        if (sampleCollector != null && !db.Users.Any(u => u.Username == "nhanvien1"))
+        {
+            db.Users.Add(new User
+            {
+                Username = "nhanvien1",
+                PasswordHash = ScrapApi.Auth.AuthUtils.HashPassword("111111"),
+                Role = "collector",
+                CustomerId = null,
+                CollectorId = sampleCollector.Id
+            });
+        }
+
+        // 5. Seed 1 PickupRequest gán cho collector sampleCollector
+        //    => chính là job sẽ hiện ở app collector
+        if (!db.PickupRequests.Any()
+            && sampleCollector != null
+            && sampleCustomer != null)
+        {
+            db.PickupRequests.Add(new PickupRequest
+            {
+                CustomerId = sampleCustomer.Id,          // khách hàng
+                ScrapType = "Nhựa PET",
+                QuantityKg = 42.5,
+                PickupTime = DateTime.UtcNow.AddHours(2),
+                Lat = 10.780,                            // toạ độ test
+                Lng = 106.680,
+                Note = "Khách dặn gọi trước 15 phút",
+                Status = PickupStatus.Accepted,          // số 1 (Accepted) trong app
+                AcceptedByCollectorId = sampleCollector.Id,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        await db.SaveChangesAsync();
     }
+}
+
+
 }

@@ -1,52 +1,136 @@
+// -------------------------
+// Khách hàng
+// -------------------------
 class Customer {
   final int id;
   final String fullName;
   final String phone;
   final String? address;
 
-  Customer({required this.id, required this.fullName, required this.phone, this.address});
+  Customer({
+    required this.id,
+    required this.fullName,
+    required this.phone,
+    this.address,
+  });
 
-  factory Customer.fromJson(Map<String, dynamic> j) =>
-      Customer(id: j['id'], fullName: j['fullName'], phone: j['phone'], address: j['address']);
+  factory Customer.fromJson(Map<String, dynamic> j) => Customer(
+        id: j['id'] as int,
+        fullName: j['fullName'] as String? ?? '',
+        phone: j['phone'] as String? ?? '',
+        address: j['address'] as String?,
+      );
 }
 
-enum PickupStatus { pending, accepted, inProgress, completed, cancelled }
+// -------------------------
+// Nhân viên thu gom (gắn vào từng pickup đã được nhận)
+// -------------------------
+class CollectorInfo {
+  final int id;
+  final String fullName;
+  final String phone;
 
+  CollectorInfo({
+    required this.id,
+    required this.fullName,
+    required this.phone,
+  });
+
+  factory CollectorInfo.fromJson(Map<String, dynamic> j) => CollectorInfo(
+        id: j['id'] as int,
+        fullName: j['fullName'] as String? ?? '',
+        phone: j['phone'] as String? ?? '',
+      );
+}
+
+// -------------------------
+// Trạng thái yêu cầu thu gom
+// -------------------------
+// Lưu ý: backend trả status là int 0..4,
+// mình vẫn giữ enum để dev đọc dễ,
+// nhưng trong model PickupRequest mình vẫn lưu số int.
+enum PickupStatus {
+  pending,      // 0
+  accepted,     // 1
+  inProgress,   // 2
+  completed,    // 3
+  cancelled,    // 4
+}
+
+// -------------------------
+// Yêu cầu thu gom
+// (cả khách xem lịch của tôi, cả collector xem công việc của tôi)
+// -------------------------
 class PickupRequest {
   final int id;
+
+  // người tạo yêu cầu (khách). Backend trả object customer {...} hoặc null
   final Customer? customer;
+
+  // nhân viên đã nhận (collector). Backend trả object collector {...} hoặc null
+  final CollectorInfo? collector;
+
   final String scrapType;
   final double quantityKg;
   final DateTime pickupTime;
   final double lat;
   final double lng;
   final String? note;
-  final int status; // 0..4
+
+  // status dạng int (0..4) đúng như backend gửi ra
+  final int status;
 
   PickupRequest({
-    required this.id, required this.customer, required this.scrapType, required this.quantityKg,
-    required this.pickupTime, required this.lat, required this.lng, this.note, required this.status
+    required this.id,
+    required this.customer,
+    required this.collector,
+    required this.scrapType,
+    required this.quantityKg,
+    required this.pickupTime,
+    required this.lat,
+    required this.lng,
+    this.note,
+    required this.status,
   });
 
   factory PickupRequest.fromJson(Map<String, dynamic> j) => PickupRequest(
-    id: j['id'],
-    customer: j['customer'] == null ? null : Customer.fromJson(j['customer']),
-    scrapType: j['scrapType'],
-    quantityKg: (j['quantityKg'] as num).toDouble(),
-    pickupTime: DateTime.parse(j['pickupTime']),
-    lat: (j['lat'] as num).toDouble(),
-    lng: (j['lng'] as num).toDouble(),
-    note: j['note'],
-    status: j['status'],
-  );
+        id: j['id'] as int,
+        customer: j['customer'] == null
+            ? null
+            : Customer.fromJson(j['customer'] as Map<String, dynamic>),
+        collector: j['collector'] == null
+            ? null
+            : CollectorInfo.fromJson(j['collector'] as Map<String, dynamic>),
+        scrapType: j['scrapType'] as String? ?? '',
+        quantityKg: (j['quantityKg'] as num).toDouble(),
+        pickupTime: DateTime.parse(j['pickupTime'] as String),
+        lat: (j['lat'] as num).toDouble(),
+        lng: (j['lng'] as num).toDouble(),
+        note: j['note'] as String?,
+        status: j['status'] as int,
+      );
 }
 
+// -------------------------
+// Collector "công ty" list đơn giản cho dropdown / danh sách nhân viên
+// (từ GET /api/collectors hiện tại bạn trả id + fullName thôi,
+// nếu sau này trả thêm phone thì thêm vào đây luôn)
+// -------------------------
 class Collector {
-  final int id; final String fullName;
+  final int id;
+  final String fullName;
+
   Collector(this.id, this.fullName);
-  factory Collector.fromJson(Map<String,dynamic> j) => Collector(j['id'], j['fullName']);
+
+  factory Collector.fromJson(Map<String, dynamic> j) => Collector(
+        j['id'] as int,
+        j['fullName'] as String? ?? '',
+      );
 }
 
+// -------------------------
+// Tin rao thu mua phế liệu
+// -------------------------
 class Listing {
   final int id;
   final String title;
@@ -66,17 +150,15 @@ class Listing {
     this.lng,
   });
 
-  factory Listing.fromJson(Map<String, dynamic> j) {
-    return Listing(
-      id: j['id'] as int,
-      title: j['title'] as String? ?? '',
-      description: j['description'] as String? ?? '',
-      pricePerKg: (j['pricePerKg'] as num).toDouble(),
-      lat: j['lat'] == null ? null : (j['lat'] as num).toDouble(),
-      lng: j['lng'] == null ? null : (j['lng'] as num).toDouble(),
-      createdAt: DateTime.parse(j['createdAt'] as String),
-    );
-  }
+  factory Listing.fromJson(Map<String, dynamic> j) => Listing(
+        id: j['id'] as int,
+        title: j['title'] as String? ?? '',
+        description: j['description'] as String? ?? '',
+        pricePerKg: (j['pricePerKg'] as num).toDouble(),
+        lat: j['lat'] == null ? null : (j['lat'] as num).toDouble(),
+        lng: j['lng'] == null ? null : (j['lng'] as num).toDouble(),
+        createdAt: DateTime.parse(j['createdAt'] as String),
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -89,7 +171,9 @@ class Listing {
       };
 }
 
-
+// -------------------------
+// Vị trí realtime của collector + job pending để màn hình Dispatch / Bản đồ
+// -------------------------
 class CollectorLive {
   final int id;
   final String fullName;
@@ -107,22 +191,20 @@ class CollectorLive {
     this.lastSeenAt,
   });
 
-  factory CollectorLive.fromJson(Map<String, dynamic> j) {
-    return CollectorLive(
-      id: j['id'] as int,
-      fullName: j['fullName'] as String? ?? '',
-      phone: j['phone'] as String? ?? '',
-      currentLat: j['currentLat'] == null
-          ? null
-          : (j['currentLat'] as num).toDouble(),
-      currentLng: j['currentLng'] == null
-          ? null
-          : (j['currentLng'] as num).toDouble(),
-      lastSeenAt: j['lastSeenAt'] == null
-          ? null
-          : DateTime.parse(j['lastSeenAt'] as String),
-    );
-  }
+  factory CollectorLive.fromJson(Map<String, dynamic> j) => CollectorLive(
+        id: j['id'] as int,
+        fullName: j['fullName'] as String? ?? '',
+        phone: j['phone'] as String? ?? '',
+        currentLat: j['currentLat'] == null
+            ? null
+            : (j['currentLat'] as num).toDouble(),
+        currentLng: j['currentLng'] == null
+            ? null
+            : (j['currentLng'] as num).toDouble(),
+        lastSeenAt: j['lastSeenAt'] == null
+            ? null
+            : DateTime.parse(j['lastSeenAt'] as String),
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -134,6 +216,9 @@ class CollectorLive {
       };
 }
 
+// -------------------------
+// 1 job đang chờ nhận (pending) cho màn Dispatch
+// -------------------------
 class PendingJob {
   final int id;
   final String scrapType;
@@ -155,18 +240,16 @@ class PendingJob {
     required this.customerPhone,
   });
 
-  factory PendingJob.fromJson(Map<String, dynamic> j) {
-    return PendingJob(
-      id: j['id'] as int,
-      scrapType: j['scrapType'] as String? ?? '',
-      quantityKg: (j['quantityKg'] as num).toDouble(),
-      lat: (j['lat'] as num).toDouble(),
-      lng: (j['lng'] as num).toDouble(),
-      createdAt: DateTime.parse(j['createdAt'] as String),
-      customerName: j['customerName'] as String? ?? '',
-      customerPhone: j['customerPhone'] as String? ?? '',
-    );
-  }
+  factory PendingJob.fromJson(Map<String, dynamic> j) => PendingJob(
+        id: j['id'] as int,
+        scrapType: j['scrapType'] as String? ?? '',
+        quantityKg: (j['quantityKg'] as num).toDouble(),
+        lat: (j['lat'] as num).toDouble(),
+        lng: (j['lng'] as num).toDouble(),
+        createdAt: DateTime.parse(j['createdAt'] as String),
+        customerName: j['customerName'] as String? ?? '',
+        customerPhone: j['customerPhone'] as String? ?? '',
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -180,6 +263,9 @@ class PendingJob {
       };
 }
 
+// -------------------------
+// Gói dữ liệu live cho màn hình điều phối
+// -------------------------
 class LiveData {
   final List<CollectorLive> collectors;
   final List<PendingJob> pendingJobs;

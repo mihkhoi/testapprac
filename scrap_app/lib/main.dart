@@ -12,19 +12,19 @@ import 'screens/map_screen.dart';
 import 'screens/listings_screen.dart';
 import 'session.dart';
 
-// MAIN async
 Future<void> main() async {
-
-  const String.fromEnvironment('FLUTTER_COMPOSITION_RENDERING', defaultValue: 'legacy');
-  
   WidgetsFlutterBinding.ensureInitialized();
 
-  // rất quan trọng: dò backend trước khi chạy app
+  // Tự dò backend (10.0.2.2 / LAN / localhost)
   await Env.init();
 
   runApp(const RootApp());
 }
 
+/// RootApp chịu trách nhiệm:
+/// - kiểm tra trạng thái đăng nhập SharedPreferences
+/// - nếu chưa đăng nhập => LoginScreen
+/// - nếu đã đăng nhập => ScrapShell (layout chính có bottom nav)
 class RootApp extends StatefulWidget {
   const RootApp({super.key});
   @override
@@ -52,10 +52,12 @@ class _RootAppState extends State<RootApp> {
 
     setState(() {
       if (token != null && role != null) {
+        // đã đăng nhập
         _role = role;
         _customerId = customerId;
         _collectorId = collectorId;
       } else {
+        // chưa đăng nhập
         _role = null;
         _customerId = null;
         _collectorId = null;
@@ -64,6 +66,7 @@ class _RootAppState extends State<RootApp> {
     });
   }
 
+  /// callback khi user chọn Đăng xuất ở trong app
   Future<void> _handleLoggedOut() async {
     await Session.logout();
     setState(() {
@@ -84,8 +87,10 @@ class _RootAppState extends State<RootApp> {
               body: Center(child: CircularProgressIndicator()),
             )
           : (_role == null
+              // chưa login -> màn Login
               ? const LoginScreen()
-              : ScrapApp(
+              // đã login -> vào shell chính có bottom nav
+              : ScrapShell(
                   role: _role!,
                   customerId: _customerId,
                   collectorId: _collectorId,
@@ -95,200 +100,333 @@ class _RootAppState extends State<RootApp> {
   }
 }
 
-class ScrapApp extends StatefulWidget {
-  final String role; // admin | customer | collector
+/// ScrapShell = khung chính sau khi đăng nhập
+/// chứa AppBar + BottomNavigationBar + các tab theo vai trò
+class ScrapShell extends StatefulWidget {
+  final String role; // 'admin' | 'customer' | 'collector'
   final int? customerId;
   final int? collectorId;
   final Future<void> Function() onLogout;
 
-  const ScrapApp({
+  const ScrapShell({
     super.key,
     required this.role,
-    this.customerId,
-    this.collectorId,
+    required this.customerId,
+    required this.collectorId,
     required this.onLogout,
   });
 
   @override
-  State<ScrapApp> createState() => _ScrapAppState();
+  State<ScrapShell> createState() => _ScrapShellState();
 }
 
-class _ScrapAppState extends State<ScrapApp> {
-  Future<void> _logout() async {
-    await Session.logout();
-    await widget.onLogout();
+class _ScrapShellState extends State<ScrapShell> {
+  int _currentIndex = 0;
+
+  Future<void> _confirmLogout() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Đăng xuất'),
+        content: const Text('Bạn có chắc muốn đăng xuất không?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Huỷ'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Đăng xuất'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true) {
+      await widget.onLogout();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final tiles = <_HomeTile>[];
+    // Build danh sách tab dựa trên vai trò
+    final tabs = _buildTabsForRole(
+      role: widget.role,
+      customerId: widget.customerId,
+      collectorId: widget.collectorId,
+    );
 
-    // customer / admin
-    if (widget.role == 'customer' || widget.role == 'admin') {
-      tiles.addAll([
-        _HomeTile(
-          icon: Icons.event_available,
-          label: 'Đặt lịch thu gom',
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const CustomerBookingScreen(),
-              ),
-            );
-          },
-        ),
-        if (widget.customerId != null)
-          _HomeTile(
-            icon: Icons.history,
-            label: 'Lịch của tôi',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MyBookingsScreen(
-                    customerId: widget.customerId!,
-                  ),
-                ),
-              );
-            },
-          ),
-        _HomeTile(
-          icon: Icons.store,
-          label: 'Nguồn cung / Listings',
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const ListingsScreen(),
-              ),
-            );
-          },
-        ),
-      ]);
-    }
+    final pages = tabs.pages;
+    final navItems = tabs.items;
 
-    // collector / admin
-    if (widget.role == 'collector' || widget.role == 'admin') {
-      tiles.add(
-        _HomeTile(
-          icon: Icons.delivery_dining,
-          label: 'Lịch thu gom (Collector)',
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const CollectorScreen(),
-              ),
-            );
-          },
-        ),
-      );
-    }
-
-    // admin only
-    if (widget.role == 'admin') {
-      tiles.addAll([
-        _HomeTile(
-          icon: Icons.business,
-          label: 'Quản lý KH / DN / Collector',
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const ManagementScreen(),
-              ),
-            );
-          },
-        ),
-        _HomeTile(
-          icon: Icons.map_outlined,
-          label: 'Bản đồ điều phối',
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const MapScreen(),
-              ),
-            );
-          },
-        ),
-      ]);
-    }
+    // Nếu _currentIndex > pages.length-1 (ví dụ đổi role runtime)
+    final safeIndex = _currentIndex.clamp(0, pages.length - 1);
 
     return Scaffold(
       appBar: AppBar(
         title: Text('Xin chào (${widget.role})'),
         actions: [
-          IconButton(
-            tooltip: 'Đăng xuất',
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Đăng xuất'),
-                  content: const Text('Bạn có chắc muốn đăng xuất không?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Huỷ'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Đăng xuất'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (ok == true) {
-                await _logout();
+          PopupMenuButton<String>(
+            onSelected: (value) async {
+              if (value == 'logout') {
+                await _confirmLogout();
               }
             },
-          ),
-        ],
-      ),
-      body: GridView.count(
-        padding: const EdgeInsets.all(16),
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        children: tiles.map((t) {
-          return InkWell(
-            onTap: t.onTap,
-            borderRadius: BorderRadius.circular(16),
-            child: Card(
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'logout',
+                child: Row(
                   children: [
-                    Icon(t.icon, size: 36),
-                    const SizedBox(height: 8),
-                    Text(
-                      t.label,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
+                    Icon(Icons.logout, size: 18),
+                    SizedBox(width: 8),
+                    Text('Đăng xuất'),
                   ],
                 ),
               ),
-            ),
-          );
-        }).toList(),
+            ],
+          ),
+        ],
+      ),
+      body: pages[safeIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: safeIndex,
+        type: BottomNavigationBarType.fixed,
+        onTap: (i) {
+          setState(() {
+            _currentIndex = i;
+          });
+        },
+        items: navItems,
       ),
     );
   }
 }
 
-class _HomeTile {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+/// Gói dữ liệu các tab cho 1 role:
+/// - pages: danh sách Widget body
+/// - items: danh sách icon+label bottom nav
+class _RoleTabs {
+  final List<Widget> pages;
+  final List<BottomNavigationBarItem> items;
+  const _RoleTabs({required this.pages, required this.items});
+}
 
-  _HomeTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+/// Tạo danh sách tab/pager theo từng role
+_RoleTabs _buildTabsForRole({
+  required String role,
+  required int? customerId,
+  required int? collectorId, // hiện tại collectorId chưa dùng nhưng giữ để sau mở rộng
+}) {
+  // Trang HOME chung cho mọi role
+  final homePage = _HomeWelcomePage(role: role);
+
+  // ---------- CUSTOMER ----------
+  if (role == 'customer') {
+    return _RoleTabs(
+      pages: [
+        homePage,
+        const CustomerBookingScreen(), // Đặt lịch thu gom
+        if (customerId != null)
+          MyBookingsScreen(customerId: customerId)
+        else
+          const _PlaceholderPage('Chưa có ID khách hàng'),
+        const ListingsScreen(), // Nguồn cung / Listings
+      ],
+      items: const [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.home),
+          label: 'Trang chủ',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.event_available),
+          label: 'Đặt lịch',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.history),
+          label: 'Lịch của tôi',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.store),
+          label: 'Listings',
+        ),
+      ],
+    );
+  }
+
+  // ---------- COLLECTOR ----------
+  if (role == 'collector') {
+    return const _RoleTabs(
+      pages: [
+        _HomeWelcomePage(role: 'collector'),
+        CollectorScreen(), // công việc được giao
+        MapScreen(), // bản đồ điều phối
+      ],
+      items: [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.home),
+          label: 'Trang chủ',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.delivery_dining),
+          label: 'Công việc',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.map_outlined),
+          label: 'Bản đồ',
+        ),
+      ],
+    );
+  }
+
+  // ---------- ADMIN ----------
+  // admin có quyền coi gần như tất cả
+  return const _RoleTabs(
+    pages: [
+      _HomeWelcomePage(role: 'admin'),
+      MapScreen(), // điều phối / bản đồ
+      ManagementScreen(), // quản lý Công ty / Collector
+      ListingsScreen(), // nguồn cung / Listings
+    ],
+    items: [
+      BottomNavigationBarItem(
+        icon: Icon(Icons.home),
+        label: 'Trang chủ',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.map_outlined),
+        label: 'Điều phối',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.business),
+        label: 'Quản lý',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.store),
+        label: 'Listings',
+      ),
+    ],
+  );
+}
+
+/// Trang chủ: chỉ chào mừng + mô tả vai trò,
+/// hướng dẫn dùng thanh điều hướng bên dưới.
+/// (Không còn grid nút như bản cũ.)
+class _HomeWelcomePage extends StatelessWidget {
+  final String role;
+  const _HomeWelcomePage({required this.role});
+
+  String _roleVietnamese(String r) {
+    switch (r) {
+      case 'admin':
+        return 'Quản trị viên';
+      case 'collector':
+        return 'Nhân viên thu gom';
+      case 'customer':
+        return 'Khách hàng';
+      default:
+        return r;
+    }
+  }
+
+  String _blurb(String r) {
+    switch (r) {
+      case 'customer':
+        return 'Bạn có thể đặt lịch thu gom phế liệu tại nhà và xem lịch hẹn của mình trực tiếp trong ứng dụng.';
+      case 'collector':
+        return 'Bạn có thể xem lịch thu gom được giao và định vị điểm thu gom trên bản đồ.';
+      case 'admin':
+        return 'Bạn có thể điều phối lịch thu gom, quản lý công ty thu gom và theo dõi nguồn cung.';
+      default:
+        return 'Ứng dụng hỗ trợ thu gom phế liệu nhanh gọn và minh bạch.';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final niceRole = _roleVietnamese(role);
+    final desc = _blurb(role);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 32),
+              Icon(
+                Icons.recycling,
+                size: 64,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Chào mừng đến với ứng dụng thu gom phế liệu',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Vai trò hiện tại: $niceRole',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                desc,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 40),
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, size: 32),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Dùng thanh điều hướng bên dưới để truy cập các chức năng chính.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 60),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Trang tạm nếu thiếu dữ liệu (ví dụ customerId null)
+class _PlaceholderPage extends StatelessWidget {
+  final String message;
+  const _PlaceholderPage(this.message);
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        message,
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodyMedium,
+      ),
+    );
+  }
 }

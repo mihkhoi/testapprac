@@ -1,7 +1,7 @@
 namespace ScrapApi.Auth
 {
-    // Dùng khi đăng ký tài khoản mới
-    // body ví dụ:
+    // Dùng khi người dùng tự đăng ký (nếu bạn còn giữ luồng này)
+    // Body ví dụ:
     // {
     //   "username": "alice",
     //   "password": "123456",
@@ -18,12 +18,32 @@ namespace ScrapApi.Auth
     );
 
     // Dùng khi đăng nhập
-    // body ví dụ:
     // {
-    //   "username": "alice",
-    //   "password": "123456"
+    //    "username": "alice",
+    //    "password": "123456"
     // }
     public record LoginDto(
+        string Username,
+        string Password
+    );
+
+    // Dùng cho ADMIN tạo tài khoản đăng nhập cho nhân viên thu gom đã tồn tại trong bảng Collectors
+    //
+    // POST /api/admin/createCollectorUser
+    // {
+    //    "collectorId": 7,
+    //    "username": "nhanvien7",
+    //    "password": "123456"
+    // }
+    //
+    // API sẽ tạo 1 User:
+    //  - Username = "nhanvien7"
+    //  - PasswordHash = hash("123456")
+    //  - Role = "collector"
+    //  - CollectorId = 7
+    //  - CustomerId = null
+    public record CreateCollectorUserDto(
+        int CollectorId,
         string Username,
         string Password
     );
